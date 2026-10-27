@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EngPaperTeacher</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brand-dot"></span>EngPaperTeacher</div>
+  <select id="docSelect" class="select" title="切换文档"></select>
+  <div class="theme-seg" id="viewSeg">
+    <button data-view="read" class="seg on">阅读</button>
+    <button data-view="course" class="seg">课程</button>
+  </div>
+  <div class="spacer"></div>
+  <button id="uploadBtn" class="btn primary">上传 PDF</button>
+  <button id="renameDocBtn" class="btn" title="修改文档标题">重命名</button>
+  <button id="reparseBtn" class="btn" title="重新解析当前 PDF（保留课程/词库）">重解析</button>
+  <button id="deleteDocBtn" class="btn danger" title="删除当前文档及其课程数据">删除</button>
+  <button id="settingsBtn" class="btn" title="LLM 设置（语块精修用）">设置</button>
+  <input id="fileInput" type="file" accept="application/pdf" hidden>
+  <div class="theme-seg" id="themeSeg">
+    <button data-theme-opt="auto" class="seg">自动</button>
+    <button data-theme-opt="light" class="seg">亮</button>
+    <button data-theme-opt="dark" class="seg">暗</button>
+  </div>
+  <span id="dictStatus" class="status-dot" title="词典状态"></span>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="side-title">目录</div>
+    <div class="side-actions">
+      <button id="chunkAllBtn" class="btn wide">全篇语块划分</button>
+      <button id="readAllBtn" class="btn wide">全篇朗读</button>
+      <label class="chk"><input type="checkbox" id="chunkMode"> 语块模式</label>
+    </div>
+    <nav id="outline" class="outline"></nav>
+    <div class="side-foot">
+      <label class="ref-toggle"><input type="checkbox" id="showRefs"> 显示参考文献</label>
+      <div class="tip">
+        <div>· 点单词：查释义 · 点句子：看翻译</div>
+        <div>· 「读」朗读 · 「块」语块 · 「精」LLM 精修</div>
+      </div>
+    </div>
+  </aside>
+  <main class="reader" id="reader">
+    <div class="empty" id="emptyState" hidden>
+      <div class="empty-title">开始精读一篇论文</div>
+      <div class="empty-sub">上传 PDF（任意英文论文），点词查释义，点句看翻译</div>
+      <button class="btn primary big" id="emptyUpload">上传 PDF</button>
+    </div>
+    <article id="article"></article>
+  </main>
+  <section class="course" id="course" hidden>
+    <aside class="course-side">
+      <div class="side-title">课程单元</div>
+      <div id="unitList" class="unit-list"></div>
+      <div class="course-actions">
+        <button id="buildUnitsBtn" class="btn wide">生成单元划分</button>
+        <button id="genLessonBtn" class="btn wide primary">生成当前单元学案</button>
+        <button id="genAllBtn" class="btn wide">补齐全部学案</button>
+        <div id="batchMsg" class="batch-msg"></div>
+      </div>
+      <div class="course-foot">
+        <div id="vocabCount" class="tip">词库：0 词</div>
+        <button id="vocabManageBtn" class="btn wide">管理词库</button>
+        <button id="vocabExportBtn" class="btn wide">导出词汇库 (TSV)</button>
+      </div>
+    </aside>
+    <div class="course-main" id="courseMain">
+      <div class="empty" id="courseEmpty">
+        <div class="empty-title">课程模式</div>
+        <div class="empty-sub">先点左栏「生成单元划分」；选择单元后点「生成当前单元学案」（需在右上「设置」配置 LLM）</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="ttsBar" class="tts-bar" hidden>
+  <button id="ttsPrev" class="btn sm" title="上一句">⏮</button>
+  <button id="ttsPlay" class="btn sm" title="暂停 / 继续">⏸</button>
+  <button id="ttsNext" class="btn sm" title="下一句">⏭</button>
+  <button id="ttsStop" class="btn sm" title="停止">■</button>
+  <span id="ttsNow" class="tts-now"></span>
+</div>
+<div id="popup" class="popup" hidden></div>
+<div id="toast" class="toast" hidden></div>
+
+<div id="vocabModal" class="modal" hidden>
+  <div class="modal-box modal-lg">
+    <div class="modal-title">词汇库</div>
+    <div class="vocab-tools">
+      <input id="vocabSearch" placeholder="搜索单词 / 释义 / 搭配 / 笔记…">
+      <button id="vocabRefresh" class="btn">刷新</button>
+      <button id="vocabExportBtn2" class="btn">导出 TSV</button>
+    </div>
+    <div id="vocabList" class="vocab-list"></div>
+    <div class="vocab-add">
+      <input id="vocabNewWord" placeholder="新单词（自动查离线词典）">
+      <input id="vocabNewMeaning" placeholder="中文释义（可选）">
+      <button id="vocabAddBtn" class="btn primary">添加</button>
+    </div>
+    <div id="vocabMsg" class="modal-msg"></div>
+    <div class="modal-actions">
+      <div class="spacer"></div>
+      <button id="vocabClose" class="btn">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div id="settingsModal" class="modal" hidden>
+  <div class="modal-box">
+    <div class="modal-title">设置（仅保存在本机浏览器）</div>
+    <div class="modal-sec">LLM（DeepSeek；用于学案生成 / 语块精修）</div>
+    <label class="fld">Base URL
+      <input id="llmBase" placeholder="https://api.deepseek.com/v1">
+    </label>
+    <label class="fld">API Key
+      <input id="llmKey" type="password" placeholder="sk-...">
+    </label>
+    <label class="fld">Model
+      <input id="llmModel" list="modelList" placeholder="deepseek-chat">
+      <datalist id="modelList"></datalist>
+    </label>
+    <label class="fld">思考强度（仅 DeepSeek 端点）
+      <select id="llmEffort">
+        <option value="off" selected>关闭（快，推荐）</option>
+        <option value="low">低</option>
+        <option value="high">高（DeepSeek 默认）</option>
+        <option value="max">最高（最费时/费 token）</option>
+      </select>
+    </label>
+    <label class="fld">输出上限 max_tokens
+      <select id="llmMaxTokens">
+        <option value="0" selected>自动（统一 256k，防截断保险）</option>
+        <option value="8192">8192</option>
+        <option value="16384">16384</option>
+        <option value="32768">32768</option>
+        <option value="65536">65536</option>
+        <option value="131072">131072</option>
+        <option value="262144">262144（256k）</option>
+      </select>
+    </label>
+    <div class="modal-sec">朗读</div>
+    <label class="fld">音色
+      <select id="ttsVoice"></select>
+    </label>
+    <label class="fld">语速
+      <select id="ttsRate">
+        <option value="-20%">0.8x</option>
+        <option value="-10%" selected>0.9x</option>
+        <option value="+0%">1.0x</option>
+        <option value="+15%">1.15x</option>
+        <option value="+30%">1.3x</option>
+      </select>
+    </label>
+    <div class="modal-row">
+      <label class="chk"><input type="checkbox" id="ttsFollow" checked> 跟随滚动</label>
+      <button id="ttsPreview" class="btn">试听</button>
+    </div>
+    <div class="modal-actions">
+      <button id="llmFetch" class="btn">拉取模型列表</button>
+      <button id="llmTest" class="btn">测试连接</button>
+      <div class="spacer"></div>
+      <button id="llmCancel" class="btn">取消</button>
+      <button id="llmSave" class="btn primary">保存</button>
+    </div>
+    <div id="llmMsg" class="modal-msg"></div>
+  </div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
